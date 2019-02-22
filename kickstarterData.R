@@ -122,11 +122,11 @@ ggplot(head(subcat.freq,10), aes(category, count, fill=count)) + geom_bar(stat="
 #Predictive Analytics
 finalData$contrib <- ifelse(finalData$backers > 0, (finalData$pledged / finalData$backers), 0)
 
-#reach ratio is the percentage of completion of the project
-finalData$reach_ratio <- ifelse( finalData$contrib != 0, ((finalData$contrib / finalData$goal)*100), 0)
+#completion ratio is the percentage of completion of the project
+finalData$comp_ratio <- ifelse( finalData$contrib != 0, ((finalData$contrib / finalData$goal)*100), 0)
 finalData$launch_year <- substr(finalData$launched, 1,4)
 
-hist(finalData$reach_ratio, main = "Histogram of average reach_ratio")
+hist(finalData$comp_ratio, main = "Histogram of average comp_ratio")
 
 finalData$status = ifelse(finalData$state == 'failed', 0, 1)
 
@@ -135,13 +135,13 @@ smp_size <- floor(0.7 * nrow(finalData))
 
 ## set the seed to make partition reproductible
 set.seed(1024)
-train_ind <- sample(seq_len(nrow(finalData)), size = smp_size)
+trainIndex <- sample(seq_len(nrow(finalData)), size = smp_size)
 
-train <- finalData[train_ind, ]
-test <- finalData[-train_ind, ]
+train <- finalData[trainIndex, ]
+test <- finalData[-trainIndex, ]
 
 
-tree1 <- tree(status ~ goal + reach_ratio + category + backers + country + launch_year , data = train)
+tree1 <- tree(status ~ goal + comp_ratio + category + backers + country + launch_year , data = train)
 
 summary(tree1)
 
@@ -150,13 +150,13 @@ plot(tree1)
 text(tree1 ,pretty =0)
 
 #applying to test data
-Pred <- predict(tree1, test)
-validf <- data.frame( kickstarter_id = test$ID, orig_status = test$status, new_status = Pred)
-validf$new = ifelse(validf$new_status < 0.5, 0, 1)
+prediction <- predict(tree1, test)
+check <- data.frame( kickstarter_id = test$ID, orig_status = test$status, new_status = prediction)
+check$new = ifelse(check$new_status < 0.5, 0, 1)
 
-table(validf$orig_status, validf$new)
+table(check$orig_status, check$new)
 
 
-auc(validf$orig_status, validf$new)
+auc(check$orig_status, check$new)
 #area under the curve is 0.971
-#most important factors are backers and reach_ratio
+#most important factors are backers and comp_ratio
