@@ -1,25 +1,22 @@
 #data cleaning, EDA, data visualization
 #data is from kickstarter projects dataset on Kaggle by Mickaël Mouillé
-install.packages("ggthemes")
-install.packages("tree")
 
 library(tidyverse)
 library(dplyr)
 library(shiny)
 library(ggthemes)
 library(tree)
-
+library(pROC)
 
 data <- read_csv("ks-projects-201801.csv")
+
+modData <- data
 
 table(data$state)
 class(data)
 str(data)
 summary(data)
 head(data)
-
-#remove the ID
-modData <- data[,-1]
 
 #add a col for differences between pledge/goal
 modData <- mutate(modData, residual = modData$usd_pledged_real-modData$usd_goal_real)
@@ -68,7 +65,7 @@ modData <- rbind(failed, successful)
 
 #look at NA values - we don't need usd pledged
 sapply(modData, function(x) sum(is.na(x)))
-modData <- modData[,-12]
+modData <- modData[,-13]
 
 finalData <- modData
 
@@ -121,20 +118,22 @@ ggplot(head(subcat.freq,10), aes(category, count, fill=count)) + geom_bar(stat="
 
 
 #amount pledged by category
-                
-
 
 #Predictive Analytics
 finalData$contrib <- ifelse(finalData$backers > 0, (finalData$pledged / finalData$backers), 0)
+
+#reach ratio is the percentage of completion of the project
 finalData$reach_ratio <- ifelse( finalData$contrib != 0, ((finalData$contrib / finalData$goal)*100), 0)
 finalData$launch_year <- substr(finalData$launched, 1,4)
+
+hist(finalData$reach_ratio, main = "Histogram of average reach_ratio")
 
 finalData$status = ifelse(finalData$state == 'failed', 0, 1)
 
 ## 70% of the sample size
 smp_size <- floor(0.7 * nrow(finalData))
 
-## set the seed to make your partition reproductible
+## set the seed to make partition reproductible
 set.seed(1024)
 train_ind <- sample(seq_len(nrow(finalData)), size = smp_size)
 
@@ -143,4 +142,21 @@ test <- finalData[-train_ind, ]
 
 
 tree1 <- tree(status ~ goal + reach_ratio + category + backers + country + launch_year , data = train)
-# status not found?
+
+summary(tree1)
+
+#decision tree rules
+plot(tree1)
+text(tree1 ,pretty =0)
+
+#applying to test data
+Pred <- predict(tree1, test)
+validf <- data.frame( kickstarter_id = test$ID, orig_status = test$status, new_status = Pred)
+validf$new = ifelse(validf$new_status < 0.5, 0, 1)
+
+table(validf$orig_status, validf$new)
+
+
+auc(validf$orig_status, validf$new)
+#area under the curve is 0.971
+#most important factors are backers and reach_ratio
