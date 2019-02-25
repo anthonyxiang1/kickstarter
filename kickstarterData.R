@@ -7,6 +7,8 @@ library(shiny)
 library(ggthemes)
 library(tree)
 library(pROC)
+library(gplots)
+library(rworldmap)
 
 data <- read_csv("ks-projects-201801.csv")
 
@@ -116,8 +118,161 @@ ggplot(head(subcat.freq,10), aes(category, count, fill=count)) + geom_bar(stat="
         axis.text.x=element_text(size=8, angle=90), legend.position="null") + 
   scale_fill_gradient(low="skyblue1", high="royalblue4")
 
-
 #amount pledged by category
+
+pledged.total <- finalData %>%
+  group_by(main_category) %>%
+  summarize(total=sum(usd_pledged_real)) %>%
+  arrange(desc(total))
+
+pledged.total$main_category <- factor(pledged.total$main_category, levels=pledged.total$main_category)
+
+ggplot(pledged.total, aes(main_category, total/1000000, fill=total)) + geom_bar(stat="identity") + 
+  ggtitle("Total Amount Pledged by Category") + xlab("Project Category") + 
+  ylab("Amount Pledged (USD millions)") + 
+  geom_text(aes(label=paste0("$", round(total/1000000,1))), vjust=-0.5) + theme_economist() + 
+  theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12, angle=90), legend.position="null") + 
+  scale_fill_gradient(low="skyblue2", high="royalblue2")
+
+#backer contribution
+pledged.avg <- finalData %>%
+  group_by(main_category) %>%
+  summarize(pledged=sum(usd_pledged_real), backers=sum(backers)) %>%
+  mutate(avg=pledged/backers) %>%
+  arrange(desc(avg))
+
+pledged.avg$main_category <- factor(pledged.avg$main_category, levels=pledged.avg$main_category)
+
+ggplot(pledged.avg, 
+       aes(main_category, avg, fill=avg)) + geom_bar(stat="identity") + 
+  ggtitle("Average Amount Pledged per Backer") + xlab("Project Category") + 
+  ylab("Amount Pledged (USD)") + 
+  geom_text(aes(label=paste0("$", round(avg,2))), vjust=-0.5) + theme_economist() + 
+  theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12, angle=90), legend.position="null") + 
+  scale_fill_gradient(low="skyblue1", high="royalblue4")
+#technology has the most amount per backer
+
+#average project goal
+goal.avg <- finalData %>%
+  group_by(main_category) %>%
+  summarize(goal=sum(usd_goal_real), projects=n()) %>%
+  mutate(avg=goal/projects) %>%
+  arrange(desc(avg))
+
+goal.avg$main_category <- factor(goal.avg$main_category, levels=goal.avg$main_category)
+
+ggplot(goal.avg, aes(main_category, avg, fill=avg)) + geom_bar(stat="identity") + 
+  ggtitle("Average Project Goal") + xlab("Project Category") + ylab("Project Goal (USD)") + 
+  geom_text(aes(label=paste0("$", round(avg,0))), vjust=-0.5) + theme_economist() + 
+  theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12, angle=90), legend.position="null") + 
+  scale_fill_gradient(low="skyblue1", high="royalblue4")
+#technology has the highest 
+
+#boxplots as well
+ggplot(finalData, aes(main_category, usd_goal_real, fill=main_category)) + geom_boxplot() + 
+  ggtitle("Project Goal vs. Project Category") + xlab("Project Category") + 
+  ylab("Project Goal (USD)") + 
+  theme(plot.title=element_text(size=15, face="bold", hjust=0.5), 
+        axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12, angle=90), legend.position="null") + 
+  coord_cartesian(ylim=c(0,60000))
+
+#distribution of usd pledged and usd goal
+usd.amounts <- gather(finalData, type, amount, usd_pledged_real, usd_goal_real, factor_key=T)
+
+ggplot(usd.amounts, aes(log(amount+1), fill=type)) + 
+  geom_histogram(alpha=0.5, position="identity") + 
+  ggtitle("Distribution of log(USD Pledged) vs. log(USD Goal)") + xlab("log(USD + 1)") + 
+  ylab("Frequency") + scale_fill_discrete("Type", labels=c("USD Pledged", "USD Goal"))
+#usd goal looks relatively normally distributed
+#usd pledged bimodal - one very left and the other around 8ish log(USD+1)
+
+#Success vs failure by project category
+state.pct <- finalData %>%
+  filter(state %in% c("successful", "failed")) %>%
+  group_by(main_category, state) %>%
+  summarize(count=n()) %>%
+  mutate(pct=count/sum(count)) %>%
+  arrange(desc(state), pct)
+
+state.pct$main_category <- factor(state.pct$main_category, 
+                                  levels=state.pct$main_category[1:(nrow(state.pct)/2)])
+
+ggplot(state.pct, aes(main_category, pct, fill=state)) + geom_bar(stat="identity") + 
+  ggtitle("Success vs. Failure Rate by Project Category") + 
+  xlab("Project Category") + ylab("Percentage") + scale_y_continuous(labels=scales::percent) + 
+  scale_fill_discrete(name="Project Status", breaks=c("successful", "failed"),
+                      labels=c("Success", "Failure")) + 
+  geom_text(aes(label=paste0(round(pct*100,1),"%")), position=position_stack(vjust=0.5), 
+            colour="white", size=5) + theme_economist() + 
+  theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12), legend.position="bottom", 
+        legend.title=element_text(size=12, face="bold")) + coord_flip()
+
+#per year
+projYear <- finalData %>%
+  filter(launch_year != "1970") %>%
+  group_by(launch_year) %>%
+  summarize(count = n())
+
+ggplot(projYear, aes(launch_year, count, fill=count)) + geom_bar(stat="identity") + 
+  ggtitle("Projects per Year") + xlab("Year") + 
+  ylab("# of Projects") + scale_x_discrete(limits=c(2009:2018)) + 
+  geom_text(aes(label=paste0(count)), vjust=-0.5) + theme_economist() + 
+  theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12), legend.position="null") + 
+  scale_fill_gradient(low="skyblue1", high="royalblue4")
+#x labels not present, but from 2009 - 2018
+
+#success and failure by year launched
+state.pct2 <- finalData %>%
+  filter(launch_year!="1970", state %in% c("successful", "failed")) %>%
+  group_by(year=launch_year, state) %>%
+  summarize(count=n()) %>%
+  mutate(pct=count/sum(count)) %>%
+  arrange(desc(state))
+
+ggplot(state.pct2, aes(year, pct, fill=state)) + geom_bar(stat="identity") + 
+  ggtitle("Success vs. Failure Rate by Year Launched") + 
+  xlab("Year") + ylab("Percentage") + scale_x_discrete(limits=c(2009:2017)) + 
+  scale_y_continuous(labels=scales::percent) + 
+  scale_fill_discrete(name="Project Status", breaks=c("successful", "failed"),
+                      labels=c("Success", "Failure")) + 
+  geom_text(aes(label=paste0(round(pct*100,1),"%")), position=position_stack(vjust=0.5), 
+            colour="white", size=5) + theme_economist() + 
+  theme(plot.title=element_text(hjust=0.5), axis.title=element_text(size=12, face="bold"), 
+        axis.text.x=element_text(size=12), legend.position="bottom", 
+        legend.title=element_text(size=12, face="bold"))
+#from 2009 - 2018
+
+#heatmap of year by category
+cat.year <- finalData %>%
+  filter(!launch_year %in% c("1970", "2018")) %>%
+  group_by(main_category, year=launch_year) %>%
+  summarize(count=n())
+
+cat.year2 <- t(matrix(cat.year$count, nrow=9))
+colnames(cat.year2) <- c("2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017")
+rownames(cat.year2) <- c("Food", "Fashion", "Art","Publishing", "Games",
+                          "Design","Technology","Theater","Photography",
+                         "Comics","Crafts","Journalism","Dance","Film & Video","Music")
+
+heatmap.2(cat.year2, dendrogram="row", Colv=F, trace="none", margins=c(10,10))
+
+#by country
+countries.freq <- finalData %>%
+  filter(country!='N,0"') %>%
+  group_by(country) %>%
+  summarize(count=n())
+
+countries.match <- joinCountryData2Map(countries.freq, joinCode="ISO2", nameJoinColumn="country")
+
+mapCountryData(countries.match, nameColumnToPlot="count", 
+               mapTitle="Number of Projects by Country", catMethod="logFixedWidth", 
+               colourPalette="heat")
 
 #Predictive Analytics
 finalData$contrib <- ifelse(finalData$backers > 0, (finalData$pledged / finalData$backers), 0)
